@@ -65,7 +65,7 @@ order_cancel_goal = OrderCancelGoal(
     label="cancel_current_order",
     goal="to obtain the reason for the cancellation",
     opener="I see you are trying to cancel the current order, how can I help you?",
-    out_of_scope="Ask the user to contect the support team at support@acme.com",
+    out_of_scope="Ask the user to contact the support team at support@acme.com",
     confirm=False
 )
 ```
@@ -92,7 +92,7 @@ The `user_goal` is another "to ..." statement. Without `hand_over=True` the AI a
 
 `keep_messages=True` means the `order_cancel_goal` will receive the full history of the conversation with `product_order_goal`, otherwise it will be wiped. Again, sometimes a wipe of the conversation history may be desired, such as when simulating different AI personalities.
 
-Let's also consider the possiblity of a really undecisive customer. We should also give them the option to "cancel the cancellation". 
+Let's also consider the possibility of a really undecisive customer. We should also give them the option to "cancel the cancellation". 
 
 ```py
 order_cancel_goal.connect(goal=product_order_goal, 
@@ -105,7 +105,7 @@ At some point you may have wondered if you can make a goal without any `Field` o
 
 You may also be curious whether you can connect a goal to itself. You can! This is useful for example when using `confirm=False` with the `Goal`-inheriting object, where you require sequential user input of some variety. 
 
-You can also chain connects, e.g. `goal.connect(...).connect(...).connnect(...)`
+You can also chain connects, e.g. `goal.connect(...).connect(...).connect(...)`
 
 Finally, let's use `GoalChain` to set the initial goal and test our AI sales assistant!
 
@@ -148,7 +148,7 @@ GoalChain returns a `dict` containing the type of response (either `message` or 
 Let's query our AI assistant with a potential purchase.
 
 ```py
-goal_chain.get_response("Hi, I'd like to buy a vaccum cleaner")
+goal_chain.get_response("Hi, I'd like to buy a vacuum cleaner")
 ```
 
 ```txt
@@ -285,7 +285,7 @@ The content returned is a dictionary parsed from the output of the LLM's JSON mo
 
 Note that in reality, if you were building such a system, you would need to make a dedicated product-lookup goal as not to allow arbitrary or meaningless product names. 
 
-Let's send our confirmation the order has been processed via `simulate_response`. We will also use  `rephrase = True` to repharse the output, which will appear more natural in case the customer frequently interacts with the goal. 
+Let's send our confirmation the order has been processed via `simulate_response`. We will also use  `rephrase = True` to rephrase the output, which will appear more natural in case the customer frequently interacts with the goal. 
  
 ```py
 goal_chain.simulate_response(f"Thank you for ordering from Acme. Your order will be dispatched in the next 1-3 business days.", rephrase = True)
