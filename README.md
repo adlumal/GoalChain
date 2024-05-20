@@ -131,7 +131,7 @@ import os
 os.environ["OPENAI_API_KEY"] = "sk-ABC..."
 ```
 
-Usually it is the user who prompts the AI agent first, but if this is not the case, we call `get_response` without any arguments, or use `None`:
+Usually it is the user who prompts the AI agent first, but if this is not the case, we call `get_response` without any arguments, or use `None` as the argument:
 
 ```py
 goal_chain.get_response()
