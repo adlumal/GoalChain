@@ -131,6 +131,8 @@ import os
 os.environ["OPENAI_API_KEY"] = "sk-ABC..."
 ```
 
+Note: The code so far is available as a [gist](https://gist.github.com/adlumal/d5d1138b57011b0b61a20e83b7484377). Paste it into a Jupyter notebook, preceded by `!pip install goalchain` to get started with the live example below.
+
 Usually it is the user who prompts the AI agent first, but if this is not the case, we call `get_response` without any arguments, or use `None` as the argument:
 
 ```py
