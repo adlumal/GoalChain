@@ -1,0 +1,41 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "goalchain"
+version = "0.0.1"
+authors = [
+  {name="Adrian Lucas Malec", email="dr.adrian@gmail.com"},
+]
+description = "GoalChain is a simple but effective framework for enabling goal-orientated conversation flows for human-LLM and LLM-LLM interaction."
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text="MIT"}
+keywords = [
+    "llm",
+    "conversation",
+    "chat",
+    "agent",
+    "goal",
+    "flow",
+]
+classifiers = [
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.9",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "litellm >= 1.37.16",
+    "Jinja2 >= 3.1.2"
+]
+
+[project.urls]
+Homepage = "https://github.com/adlumal/GoalChain"
+Documentation = "https://github.com/adlumal/GoalChain/blob/main/README.md"
+Issues = "https://github.com/adlumal/GoalChain/issues"
+Source = "https://github.com/adlumal/GoalChain"
