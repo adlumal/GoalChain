@@ -41,7 +41,8 @@ class Goal:
                  out_of_scope=None, 
                  confirm=True, 
                  model="gpt-4-1106-preview", 
-                 json_model="gpt-4-1106-preview"):
+                 json_model="gpt-4-1106-preview",
+                 params = {}):
         self.label = label
         self.goal = goal
         self.opener = opener
@@ -54,6 +55,7 @@ class Goal:
         self.completed_string = "completed"
         self.hand_over = False    
         self.completed = False
+        self.params = params
         
         self.goal_prompt = Prompt("""Your role is to continue the conversation below as the Assistant.
 Goal: {{goal}}
@@ -176,7 +178,12 @@ Assistant:""")
         else:
             response_format = None
             model = self.model
-        llm_response = completion(messages=llm_messages, model=model, response_format=response_format)
+        llm_response = completion(
+            messages=llm_messages,
+            model=model, 
+            response_format=response_format,
+            **self.params
+        )
         llm_response_text = llm_response["choices"][0]["message"]["content"]
         return llm_response_text
     

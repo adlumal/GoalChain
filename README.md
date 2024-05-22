@@ -124,7 +124,19 @@ product_order_goal = ProductOrderGoal(...
 )
 ```
 
-So we also need to set the `OPENAI_API_KEY` environmental variable.
+You can also pass LiteLLM [common parameters](https://litellm.vercel.app/docs/completion/input) using `params`, for example:
+
+```py
+product_order_goal = ProductOrderGoal(...
+    model="gpt-4-1106-preview", 
+    json_model="gpt-4-1106-preview",
+    params={"temperature": 1.5, "max_tokens": 10}
+)
+```
+
+You can also use `params` to call local models [using VLLM](https://docs.litellm.ai/docs/providers/vllm).
+
+When using the default `"gpt-4-1106-preview"` model, remember to set the `OPENAI_API_KEY` environment variable.
 
 ```py
 import os
@@ -258,6 +270,12 @@ goal_chain.get_response("Yes")
 ```
 
 The validator we use has given enough information to the AI assistant to justify why it cannot process this quantity via the `ValidationError` message.
+
+Note that GoalChain only validates inputs once the `Goal` has been completed for token efficiency and performance reasons. If you'd like to validate inputs as you go, you have two options:
+
+1. Use a `Goal` with only one `Field`, and `confirm=False`. Chain these goals instead of using multiple fields in a single `Goal`.
+
+1. Use a soft-prompt, e.g. `quantity = Field("quantity of product (no more than 100)", format_hint="an integer")`. This approach is not foolproof, so it is still recommended to use a validator. The user will receive immediate feedback, however.
 
 Let's complete the order.
 
