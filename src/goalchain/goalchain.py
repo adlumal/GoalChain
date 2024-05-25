@@ -284,6 +284,8 @@ Assistant:""")
         self.completed = False
         if messages:
             self.messages = messages
+        else:
+            self.messages = []
         if hand_over:
             self.hand_over = True
         return self
