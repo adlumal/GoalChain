@@ -4,7 +4,11 @@ import inspect
 from litellm import completion
 from jinja2 import Environment, select_autoescape
 
-# Prompt based on banks by Massimiliano Pippi
+# Define special constants
+RESET = object()
+CLEAR = object()
+
+# Prompt class based on banks by Massimiliano Pippi
 class Prompt:
     env = Environment(
         autoescape=select_autoescape(
@@ -40,6 +44,11 @@ class Goal:
                  opener, 
                  out_of_scope=None, 
                  confirm=True, 
+                 goal_prompt_template=None,
+                 completed_prompt_template=None,
+                 error_prompt_template=None,
+                 validation_prompt_template=None,
+                 rephrase_prompt_template=None,
                  model="gpt-4-1106-preview", 
                  json_model="gpt-4-1106-preview",
                  params = {}):
@@ -53,11 +62,12 @@ class Goal:
         self.messages = []
         self.connected_goals = []
         self.completed_string = "completed"
-        self.hand_over = False    
-        self.completed = False
+        self.hand_over = True    
         self.params = params
+        self.next_action = None 
+        self.started = False
         
-        self.goal_prompt = Prompt("""Your role is to continue the conversation below as the Assistant.
+        self.goal_prompt = goal_prompt_template if goal_prompt_template else Prompt("""Your role is to continue the conversation below as the Assistant.
 Goal: {{goal}}
 {% if information_list %}
 Information to be gathered: {{information_list|join(", ")}}
@@ -85,7 +95,7 @@ Conversation so far:
 {{ message.actor }}: {{ message.content }}
 {% endfor %}
 Assistant:""", filters={"format_flag": self._format_flag})
-        self.completed_prompt = Prompt("""Given the conversation below output JSON which includes only the following keys:
+        self.completed_prompt = completed_prompt_template if completed_prompt_template else Prompt("""Given the conversation below output JSON which includes only the following keys:
 {% for field in fields %}
 {{ field.name }}: {{ field.description }} {% if field.format_hint %}({{field.format_hint}})
 {% endif %}
@@ -95,8 +105,8 @@ Conversation:
 {% for message in messages %}
 {{ message.actor }}: {{ message.content }}
 {% endfor %}""")
-        self.error_prompt = Prompt("""I'm sorry, but I'm having trouble processing that request right now.""")
-        self.validation_prompt = Prompt("""Your role is to continue the conversation below as the Assistant.
+        self.error_prompt = error_prompt_template if error_prompt_template else Prompt("""I'm sorry, but I'm having trouble processing that request right now.""")
+        self.validation_prompt = validation_prompt_template if validation_prompt_template else Prompt("""Your role is to continue the conversation below as the Assistant.
 Unfortunately you had trouble processing the user's request because of the following problems:
 {% for error in validation_error_messages %}
 * {{ error }}
@@ -108,8 +118,7 @@ Conversation so far:
 {{ message.actor }}: {{ message.content }}
 {% endfor %}
 Assistant:""")
-        self.rephrase_prompt = Prompt("""
-Your role is to continue the conversation below as the Assistant.
+        self.rephrase_prompt = rephrase_prompt_template if rephrase_prompt_template else Prompt("""Your role is to continue the conversation below as the Assistant.
 Normally you respond with: {{ response }}
 {% if message_history %}
 Goal: {{goal}}
@@ -123,6 +132,29 @@ Conversation so far:
 Simply rephrase your response as the Assistant.
 {% endif %}
 Assistant:""")
+        
+    # Overloading the '/' operator to create GoalConnection
+    def __truediv__(self, other):
+        if isinstance(other, str):
+            # Create a GoalConnection with user_goal
+            return GoalConnection(goal=self, user_goal=other)
+        else:
+            raise TypeError("Use 'goal / \"user goal description\"'")
+        
+    def __rshift__(self, other):
+        if isinstance(other, GoalConnection):
+            self.connect(
+                goal=other.goal,
+                user_goal=other.user_goal,
+                hand_over=other.hand_over,
+                keep_messages=other.keep_messages
+            )
+            return other.goal
+        elif isinstance(other, Action):
+            self.next_action = other
+            return other
+        else:
+            raise TypeError("Use 'goal >> (goal2 / \"user goal description\" / RESET / CLEAR)' or 'goal >> Action(function)'")
         
     def get_fields(self):
         fields = inspect.getmembers(self)
@@ -187,6 +219,10 @@ Assistant:""")
         llm_response_text = llm_response["choices"][0]["message"]["content"]
         return llm_response_text
     
+    def on_complete(self, data):
+        # Default behavior: proceed to the next action or return data
+        return data
+    
     def simulate_response(self, response, rephrase = False, message_history = []):
         if rephrase:
             rephrase_details = {
@@ -234,7 +270,7 @@ Assistant:""")
                         hand_over_messages = self.messages
                     else:
                         hand_over_messages = []
-                    return connected_goal["goal"].take_over(messages = hand_over_messages, hand_over = connected_goal["hand_over"])
+                    return connected_goal["goal"].take_over(messages=hand_over_messages, hand_over=connected_goal["hand_over"])
             
             # if COMPLETED
             if self._format_flag(self.completed_string).lower() in response_text.lower():
@@ -255,11 +291,10 @@ Assistant:""")
                                 try:
                                     response_object[label] = field.validator(response_object[label])
                                 except ValidationError as e:
-                                    validation_error_messages.append(e)
+                                    validation_error_messages.append(str(e))
                                         
                     if not validation_error_messages:
-                        completed = True
-                        return response_object
+                        return self.on_complete(response_object)
                     else:
                         validation_details = {
                             "validation_error_messages": validation_error_messages,
@@ -274,23 +309,30 @@ Assistant:""")
                         return self.simulate_response(validation_response_text)
                     
                 except json.JSONDecodeError:
-                    error_response = error_prompt.text()
+                    error_response = self.error_prompt.text()
                     return self.simulate_response(error_response)
 
             else:
                 return self.simulate_response(response_text)
     
-    def take_over(self, messages = [], hand_over = False):
-        self.completed = False
+    def take_over(self, messages=[], hand_over=True, data=None):
         if messages:
             self.messages = messages
         else:
             self.messages = []
         if hand_over:
             self.hand_over = True
+        if data is not None:
+            self.data = data
+        else:
+            self.data = {}
+        if not self.started:
+            if hasattr(self, 'on_start') and callable(self.on_start):
+                self.on_start()
+            self.started = True
         return self
     
-    def connect(self, goal, user_goal, hand_over = False, keep_messages = False):
+    def connect(self, goal, user_goal, hand_over = True, keep_messages = True):
         self.connected_goals.append(
             {
                 "goal": goal,
@@ -305,22 +347,148 @@ class ValidationError(Exception):
     def __init__(self, message):
         super().__init__(message)
 
+class GoalConnection:
+    def __init__(self, goal, user_goal, hand_over=True, keep_messages=True):
+        self.goal = goal
+        self.user_goal = user_goal
+        self.hand_over = hand_over
+        self.keep_messages = keep_messages
+
+    def __truediv__(self, other):
+        if other is RESET:
+            self.hand_over = False
+            return self
+        elif other is CLEAR:
+            self.keep_messages = False
+            return self
+        else:
+            raise TypeError("Use '/ RESET' or '/ CLEAR' to set options")
+
+class Action:
+    def __init__(self, function, response_template=None, rephrase=False, rephrase_prompt_template=None, conversation_end=False):
+        self.function = function
+        self.response_template = response_template
+        self.rephrase = rephrase
+        self.conversation_end = conversation_end
+        self.next_goal = None
+        self.conditions = []
+        self.rephrase_prompt = rephrase_prompt_template if rephrase_prompt_template else Prompt("""
+Your role is to continue the conversation below as the Assistant.
+Please rephrase the following response to make it more natural and engaging, taking into account the conversation so far.
+Continue the conversation naturally. Do not be creative. Do not include information, actions, suggestions, facts or details that are not in the response you are to rephrase.
+Response:
+{{ response }}
+Conversation so far:
+{% for message in message_history %}
+{{ message.actor }}: {{ message.content }}
+{% endfor %}
+Assistant:
+""")
+        self.next_goal = None
+        self.conditions = []  # List of tuples (condition_function, next_goal)
+
+    # Overload the '~' operator to set conversation_end to True
+    def __invert__(self):
+        self.conversation_end = True
+        return self
+
+    # Overload '>>' to chain actions to goals or other actions
+    def __rshift__(self, other):
+        if isinstance(other, tuple) and len(other) == 2:
+            condition_function, next_goal = other
+            self.add_condition(condition_function, next_goal)
+            return next_goal
+        elif isinstance(other, Goal):
+            self.next_goal = other
+            return other
+        elif isinstance(other, Action):
+            self.next_action = other
+            return other
+        else:
+            raise TypeError("Can only chain an Action to a Goal or another Action using '>>' operator")
+
+    def add_condition(self, condition_function, next_goal):
+        self.conditions.append((condition_function, next_goal))
+
+    def process(self, data, assistant):
+        result = self.function(data)
+        if self.response_template:
+            # Generate response using the response_template
+            response_text = self.generate_response(result)
+            if self.rephrase:
+                # Rephrase the response using the assistant's LLM
+                response_text = self.rephrase_response(response_text, assistant)
+            # After processing, check conditions
+            for condition_function, next_goal in self.conditions:
+                if condition_function(result):
+                    self.next_goal = next_goal
+                    break
+            return response_text
+        else:
+            # No response template, but still check conditions
+            for condition_function, next_goal in self.conditions:
+                if condition_function(result):
+                    self.next_goal = next_goal
+                    break
+            return result
+
+    def generate_response(self, result):
+        # Generate response using the response_template
+        prompt = Prompt(self.response_template)
+        response_text = prompt.text(result)
+        return response_text
+
+    def rephrase_response(self, response_text, assistant):
+        rephrase_details = {
+            'response': response_text,
+            'goal': assistant.goal,
+            'message_history': assistant.messages
+        }
+        rephrase_pre_prompt = self.rephrase_prompt.text(rephrase_details)
+        # Use the assistant's inference method to get the rephrased response
+        rephrased_response = assistant._inference(
+            user_message=rephrase_pre_prompt,
+            system_prompt="",
+            json_mode=False
+        )
+        return rephrased_response
+
 class GoalChain:
     def __init__(self, starting_goal):
         self.goal = starting_goal
-    
-    def get_response(self, user_input = None):
+        self.data = {}
+        self.goal.take_over(data=self.data)
+
+    def get_response(self, user_input=None):
         response = self.goal.get_response(user_input)
         if isinstance(response, str):
             return {"type": "message", "content": response, "goal": self.goal}
-        elif isinstance(response, dict):
-            return {"type": "data", "content": response, "goal": self.goal}
         elif isinstance(response, Goal):
-            self.goal = response
-            return self.get_response(None)
+            # Check if transitioning to a different goal or re-entering the same goal
+            if response is not self.goal or response.started:
+                self.goal = response
+                self.goal.started = False  # Reset started flag
+                self.goal.take_over(data=self.data)
+            return self.get_response()
+        elif isinstance(response, dict):
+            self.data.update(response)
+            if hasattr(self.goal, 'next_action') and self.goal.next_action:
+                action = self.goal.next_action
+                action_response = action.process(self.data, assistant=self.goal)
+                # Check for next_goal first
+                if hasattr(action, 'next_goal') and action.next_goal:
+                    self.goal = action.next_goal
+                    self.goal.take_over(data=self.data)
+                    return self.get_response()
+                elif action.conversation_end:
+                    return {"type": "end", "content": action_response, "goal": self.goal}
+                else:
+                    return {"type": "message", "content": action_response, "goal": self.goal}
+            else:
+                return {"type": "data", "content": self.data, "goal": self.goal}
         else:
             raise TypeError("Unexpected Goal response type")
-            
+        
     def simulate_response(self, user_input, rephrase = False):
         response = self.goal.simulate_response(user_input, rephrase = rephrase)
         return {"type": "message", "content": response, "goal": self.goal}
