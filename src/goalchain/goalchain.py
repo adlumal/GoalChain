@@ -154,7 +154,7 @@ Assistant:""")
             self.next_action = other
             return other
         else:
-            raise TypeError("Use 'goal >> (goal2 / \"user goal description\" / RESET / CLEAR)' or 'goal >> Action(function)'")
+            raise TypeError("Use 'goal >> (goal2 / \"user goal description\" | RESET | CLEAR)' or 'goal >> Action(function)'")
         
     def get_fields(self):
         fields = inspect.getmembers(self)
@@ -199,25 +199,21 @@ Assistant:""")
         prompt_details["fields"] = field_list
         return prompt_details
     
-    def _inference(self, user_message, system_prompt = "", json_mode = False):
+    def _inference(self, user_message, system_prompt="", json_mode=False):
         llm_messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
         ]
-        if json_mode:
-            response_format = {"type": "json_object"}
-            model = self.json_model
-        else:
-            response_format = None
-            model = self.model
+        model = self.json_model if json_mode else self.model
+        response_format = {"type": "json_object"} if json_mode else None
+
         llm_response = completion(
             messages=llm_messages,
-            model=model, 
+            model=model,
             response_format=response_format,
             **self.params
         )
-        llm_response_text = llm_response["choices"][0]["message"]["content"]
-        return llm_response_text
+        return llm_response["choices"][0]["message"]["content"]
     
     def on_complete(self, data):
         # Default behavior: proceed to the next action or return data
@@ -354,7 +350,7 @@ class GoalConnection:
         self.hand_over = hand_over
         self.keep_messages = keep_messages
 
-    def __truediv__(self, other):
+    def __or__(self, other):
         if other is RESET:
             self.hand_over = False
             return self
@@ -362,7 +358,7 @@ class GoalConnection:
             self.keep_messages = False
             return self
         else:
-            raise TypeError("Use '/ RESET' or '/ CLEAR' to set options")
+            raise TypeError("Use '| RESET' or '| CLEAR' to set options")
 
 class Action:
     def __init__(self, function, response_template=None, rephrase=False, rephrase_prompt_template=None, conversation_end=False):
@@ -410,7 +406,7 @@ Assistant:
     def add_condition(self, condition_function, next_goal):
         self.conditions.append((condition_function, next_goal))
 
-    def process(self, data, assistant):
+    def execute(self, data, assistant):
         result = self.function(data)
         if self.response_template:
             # Generate response using the response_template
@@ -460,35 +456,47 @@ class GoalChain:
         self.goal.take_over(data=self.data)
 
     def get_response(self, user_input=None):
-        response = self.goal.get_response(user_input)
-        if isinstance(response, str):
-            return {"type": "message", "content": response, "goal": self.goal}
-        elif isinstance(response, Goal):
-            # Check if transitioning to a different goal or re-entering the same goal
-            if response is not self.goal or response.started:
-                self.goal = response
-                self.goal.started = False  # Reset started flag
-                self.goal.take_over(data=self.data)
-            return self.get_response()
-        elif isinstance(response, dict):
-            self.data.update(response)
-            if hasattr(self.goal, 'next_action') and self.goal.next_action:
-                action = self.goal.next_action
-                action_response = action.process(self.data, assistant=self.goal)
-                # Check for next_goal first
-                if hasattr(action, 'next_goal') and action.next_goal:
-                    self.goal = action.next_goal
-                    self.goal.take_over(data=self.data)
-                    return self.get_response()
-                elif action.conversation_end:
-                    return {"type": "end", "content": action_response, "goal": self.goal}
-                else:
-                    return {"type": "message", "content": action_response, "goal": self.goal}
+        try:
+            response = self.goal.get_response(user_input)
+            if isinstance(response, str):
+                return self._handle_message(response)
+            elif isinstance(response, Goal):
+                return self._handle_goal_transition(response)
+            elif isinstance(response, dict):
+                return self._handle_data_response(response)
             else:
-                return {"type": "data", "content": self.data, "goal": self.goal}
+                raise TypeError("Unexpected Goal response type")
+        except Exception as e:
+            return self.simulate_response("I'm sorry, something went wrong.")
+    
+    def _handle_message(self, response):
+        return {"type": "message", "content": response, "goal": self.goal}
+
+    def _handle_goal_transition(self, new_goal):
+        # Check if transitioning to a different goal or re-entering the same goal
+        if new_goal is not self.goal or new_goal.started:
+            self.goal = new_goal
+            self.goal.started = False  # Reset started flag
+            self.goal.take_over(data=self.data)
+        return self.get_response()
+    
+    def _handle_data_response(self, data):
+        self.data.update(data)
+        if hasattr(self.goal, 'next_action') and self.goal.next_action:
+            action = self.goal.next_action
+            action_response = action.execute(self.data, assistant=self.goal)
+            # Check for next_goal first
+            if hasattr(action, 'next_goal') and action.next_goal:
+                self.goal = action.next_goal
+                self.goal.take_over(data=self.data)
+                return self.get_response()
+            elif action.conversation_end:
+                return {"type": "end", "content": action_response, "goal": self.goal}
+            else:
+                return {"type": "message", "content": action_response, "goal": self.goal}
         else:
-            raise TypeError("Unexpected Goal response type")
-        
+            return {"type": "data", "content": self.data, "goal": self.goal}
+
     def simulate_response(self, user_input, rephrase = False):
         response = self.goal.simulate_response(user_input, rephrase = rephrase)
         return {"type": "message", "content": response, "goal": self.goal}
