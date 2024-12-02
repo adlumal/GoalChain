@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "goalchain"
-version = "0.0.5"
+version = "0.0.6"
 authors = [
   {name="Adrian Lucas Malec", email="dr.adrian@gmail.com"},
 ]
@@ -30,7 +30,8 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "Jinja2 >= 3.1.2"
+    "Jinja2 >= 3.1.2",
+    "graphviz"
 ]
 
 [project.urls]

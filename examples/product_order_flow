@@ -1,0 +1,43 @@
+// GoalChain
+digraph {
+	G0 [label="product_order
+Goal: to obtain information on an order to be made
+Opener: I see you are trying to order a product, how can I help you?
+Fields:
+- customer_email: customer email (a string)
+- product_name: product to be ordered (a string)
+- quantity: quantity of product (an integer) [Validator]"]
+	G1 [label="cancel_current_order
+Goal: to obtain the reason for the cancellation
+Opener: I see you are trying to cancel the current order, how can I help you?
+Fields:
+- reason: reason for order cancellation (optional) (a string)"]
+	G2 [label="high_value_order
+Goal: to verify high-value orders
+Opener: Since you're ordering a large quantity, we need to verify your order by sending you a verification code over email.
+Fields:
+- verification_code: verification code (a 6-digit code)"]
+	A0 [label="Action: process_order
+Response Template
+[Rephrase]
+[End]"]
+	A1 [label="Action: cancel_order
+Response Template
+[Rephrase]
+[End]"]
+	A2 [label="Action: process_high_value_order
+Response Template
+[Rephrase]
+[End]"]
+	G0 -> A0 [label=""]
+	G0 -> G1 [label="to cancel the current order"]
+	G0 -> G1 [label="to cancel the current order"]
+	G1 -> A1 [label=""]
+	G1 -> G0 [label="to continue with the order anyway"]
+	G1 -> G0 [label="to continue with the order anyway"]
+	G2 -> A2 [label=""]
+	G2 -> G1 [label="to cancel the current order"]
+	G2 -> G1 [label="to cancel the current order"]
+	A0 -> G2 [label=is_high_quantity]
+	A0 -> G2 [label=is_high_quantity]
+}
